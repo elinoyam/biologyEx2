@@ -10,10 +10,12 @@ REPLACEMENT_SIZE = int(POPULATION_SIZE * REPLACEMENT_RATE)
 EPSILON = 0.001
 NO_IMPROVEMENT_THRESHOLD = 15
 ELITE_SELECTION = 0.2
-LOCAL_SWAPS = 5
-DARWIN = False
-LAMARCK = False
+OPTIMIZATION_SWAPS_COUNT = 1
+DO_DARWIN = False # set to True to use Darwin's optimization
+DO_LAMARCK = True # set to True to use Lamarck's optimization
 FITNESS_COUNTER = 0
+LETTERS = "abcdefghijklmnopqrstuvwxyz"
+LETTERS_COUNT = 26
 
 with open("dict.txt", "r") as dict_file:
     dictionary = set(word.strip() for word in dict_file)
@@ -103,9 +105,8 @@ def generate_population():
 def crossover(parent1, parent2):
     # create a child from crossing over the parents at a random point in the decryption key dictionary
     # while making sure that the child's decryption key is valid (i.e. no duplicate values)
-    LETTERS = "abcdefghijklmnopqrstuvwxyz"
     child = {}
-    crossover_point = random.randint(0, len(LETTERS) - 1)
+    crossover_point = random.randint(0, LETTERS_COUNT - 1)
     for i in range(crossover_point):
         child[LETTERS[i]] = parent1[LETTERS[i]]
     for i in range(crossover_point, len(LETTERS)):
@@ -128,12 +129,10 @@ def crossover(parent1, parent2):
 
 def mutate(decryption_key):
     # swap two random letters in the decryption key
-    LETTERS = "abcdefghijklmnopqrstuvwxyz"
-    letter1 = random.choice(LETTERS)
-    letter2 = random.choice(LETTERS)
+    letter1, letter2 = random.choices(LETTERS, k=2)
     decryption_key[letter1], decryption_key[letter2] = decryption_key[letter2], decryption_key[letter1]
-    return decryption_key
 
+    return decryption_key
 
 
 def select_parents(population, fitness_scores,tournament_size = 5):
@@ -172,68 +171,79 @@ def replace_population(population, offspring, fitness_scores):
     return population
 
 
-def local_optimization(individual, n=LOCAL_SWAPS):
-    keys = list(individual.keys())
-    for _ in range(n):
-        index1, index2 = random.sample(range(len(keys)), 2)
-        letter1, letter2 = keys[index1], keys[index2]
-        individual[letter1], individual[letter2] = individual[letter2], individual[letter1]
-    return individual
+def optimized_mutation(solution, solution_fitness, number_of_swaps):
+    for _ in range(number_of_swaps):
+        solution = mutate(solution)
+
+    return solution
 
 
 def darwin_mutation(population, fitness_scores):
-    for i in range(len(population)):
-        mutated_individual = mutate(population[i])
-        mutated_fitness = fitness(mutated_individual)
-        if mutated_fitness > fitness_scores[i]:
-            fitness_scores[i] = mutated_fitness
+    # for each solution in the population, create a mutated version of it
+    mutations_fitness = [fitness(optimized_mutation(solution, score, OPTIMIZATION_SWAPS_COUNT)) for solution, score in zip(population, fitness_scores)]
+
+    # if the mutated version has better fitness than the original solution, replace the original fitness with the mutated version
+    darwin_fitness = [max(fitness_scores[i], mutations_fitness[i]) for i in range(len(fitness_scores))]
+
+    return darwin_fitness
+
 
 def lamarck_mutation(population, fitness_scores):
+    # for each solution in the population, create a mutated version of it
+    mutations = [optimized_mutation(solution, score, OPTIMIZATION_SWAPS_COUNT) for solution, score in zip(population, fitness_scores)]
+    lamarck_fitness = []
+
+    # if the mutated version has better fitness than the original solution, replace the original solution and fitness with the mutated version
     for i in range(len(population)):
-        mutated_individual = mutate(population[i])
-        mutated_fitness = fitness(mutated_individual)
-        if mutated_fitness > fitness_scores[i]:
-            population[i] = mutated_individual
-            fitness_scores[i] = mutated_fitness
+        fitness_score = fitness(mutations[i])
+        if fitness_score > fitness_scores[i]:
+            population[i] = mutations[i]
+            lamarck_fitness.insert(i, fitness_score)
+        else:
+            lamarck_fitness.insert(i, fitness_scores[i])
+
+    return lamarck_fitness
 
 
 def genetic_algorithm():
     population = generate_population()
     no_change = 0
-    best_fitness = 0
+    prev_best_fitness = 0
+    best_solution_fitness = 0
+
     for generation in range(MAX_GENERATIONS):
-        fitness_scores = [fitness(decryption_key) for decryption_key in population]
-        elite_size = int(POPULATION_SIZE * ELITE_SELECTION)  # Select top ELITE_SELECTION of the population
-        elite = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i], reverse=True)[:elite_size]
-        next_generation = [population[i] for i in elite]
-        while len(next_generation) < POPULATION_SIZE:
-            parent1, parent2 = select_parents(population, fitness_scores)
-            offspring = crossover(parent1, parent2)
-            if random.random() < MUTATION_RATE:
-                offspring = mutate(offspring)
-            next_generation.append(offspring)
+        if generation > 0:
+            elite_size = int(POPULATION_SIZE * ELITE_SELECTION)  # Select top ELITE_SELECTION of the population
+            elite = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i], reverse=True)[:elite_size]
+            next_generation = [population[i] for i in elite]
+            while len(next_generation) < POPULATION_SIZE:
+                parent1, parent2 = select_parents(population, fitness_scores)
+                offspring = crossover(parent1, parent2)
+                if not DO_LAMARCK and not DO_DARWIN and random.random() < MUTATION_RATE:
+                    offspring = mutate(offspring)
+                next_generation.append(offspring)
 
-        # Replace population with next generation
-        ######decide which one of the two methods we prefer -----------------------------
-        population = replace_population(population, next_generation, fitness_scores)
-        #population = next_generation
-
-        if DARWIN:
-            darwin_mutation(population, fitness_scores)
-        if LAMARCK:
-            lamarck_mutation(population, fitness_scores)
-
+            # Replace population with next generation
+            ######decide which one of the two methods we prefer -----------------------------
+            population = replace_population(population, next_generation, fitness_scores)
+            #population = next_generation
 
         fitness_scores = [fitness(decryption_key) for decryption_key in population]
-        best_individual_index = max(range(len(fitness_scores)), key=lambda i: fitness_scores[i])
+        if DO_DARWIN:
+            fitness_scores = darwin_mutation(population, fitness_scores)
+        if DO_LAMARCK:
+            fitness_scores = lamarck_mutation(population, fitness_scores)
 
 
-        best_key = population[best_individual_index]
-        prev_best_fitness = best_fitness
-        best_fitness = fitness_scores[best_individual_index]
-        print(f'generation {generation}: best fitness = {best_fitness}')
+        # find the index of the best solution in the population
+        best_solution_fitness = max(fitness_scores)
+        best_solution_index = fitness_scores.index(best_solution_fitness)
+        best_solution = population[best_solution_index]
 
-        if best_fitness - prev_best_fitness < EPSILON:
+        # if the best solution didn't change for 10 generations, stop
+        print(f'generation {generation}: best fitness = {best_solution_fitness}')
+
+        if best_solution_fitness - prev_best_fitness < EPSILON:
             no_change += 1
         else:
             no_change = 0
@@ -241,7 +251,9 @@ def genetic_algorithm():
         if no_change == NO_IMPROVEMENT_THRESHOLD:
             break
 
-    return best_key
+        prev_best_fitness = best_solution_fitness # save the best fitness score for the next generation
+
+    return best_solution
 
 
 best_decryption_key = genetic_algorithm()

@@ -1,26 +1,26 @@
-a -> y
-b -> x
-c -> i
-d -> n
-e -> t
-f -> o
-g -> q
-h -> j
-i -> c
-j -> e
-k -> b
-l -> l
-m -> d
-n -> u
-o -> z
-p -> m
-q -> s
-r -> v
-s -> p
-t -> k
-u -> r
-v -> h
-w -> w
-x -> g
-y -> a
-z -> f
+a	p
+b	u
+c	o
+d	w
+e	t
+f	c
+g	v
+h	n
+i	f
+j	x
+k	y
+l	z
+m	k
+n	d
+o	l
+p	g
+q	s
+r	a
+s	j
+t	m
+u	r
+v	h
+w	b
+x	e
+y	i
+z	q
