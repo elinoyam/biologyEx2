@@ -1,12 +1,12 @@
+import math
 import random
+import numpy as np
 from collections import Counter,defaultdict
 
-# Global variables
 POPULATION_SIZE = 100
 MAX_GENERATIONS = 150
 MUTATION_RATE = 1
-REPLACEMENT_RATE = 0.15
-REPLACEMENT_SIZE = int(POPULATION_SIZE * REPLACEMENT_RATE)
+REPLACEMENT_IN_BLOCK = math.floor(POPULATION_SIZE * 0.15)
 EPSILON = 0.001
 NO_IMPROVEMENT_THRESHOLD = 15
 ELITE_SELECTION = 0.2
@@ -62,27 +62,28 @@ def letters2_freq_in_text(text):
 def fitness(decryption_key):
     global FITNESS_COUNTER
     FITNESS_COUNTER += 1
-    decrypted_text = decrypt_text(decryption_key)
+    decrypted_text = decrypt(decryption_key)
+    #make it a set to remove duplicates
     decrypted_text_set = set(decrypted_text.split(" "))
 
     letter_freq = letters_freq_in_text(decrypted_text)
     letter_pair_freq = letters2_freq_in_text(decrypted_text)
-    letters_matching = 0
+    letters_diff = 0
 
-    words_matching = len(decrypted_text_set.intersection(dictionary))
+    words_in_dict = len(decrypted_text_set.intersection(dictionary))*2
 
     for letter in letter_frequencies:
-        if letter in letter_freq and letter in letter_frequencies:
-            letters_matching += (1 - abs(letter_freq[letter] - letter_frequencies[letter])) ** 2
+        if letter in letter_freq:
+            letters_diff += (1 - abs(letter_freq[letter] - letter_frequencies[letter])) * 2
 
     for letter_pair in letter2_frequencies:
-        if letter_pair in letter_pair_freq and letter_pair in letter2_frequencies:
-            letters_matching += (1 - abs(letter_pair_freq[letter_pair] - letter2_frequencies[letter_pair])) ** 2
+        if letter_pair in letter_pair_freq:
+            letters_diff += (1.5 - abs(letter_pair_freq[letter_pair] - letter2_frequencies[letter_pair])) * 2
 
-    return words_matching + letters_matching
+    return words_in_dict + letters_diff
 
 
-def decrypt_text(decryption_key):
+def decrypt(decryption_key):
     decrypted_text = ""
     for letter in encoded_text:
         if letter in decryption_key:
@@ -135,6 +136,7 @@ def mutate(decryption_key):
     return decryption_key
 
 
+
 def select_parents(population, fitness_scores,tournament_size = 5):
     parents = []
     for i in range(2):
@@ -149,24 +151,35 @@ def select_parents(population, fitness_scores,tournament_size = 5):
     return parents
 
 
-def replace_population(population, offspring, fitness_scores):
-    worst_indices = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i])[:3 * REPLACEMENT_SIZE]
+def modify_population(population, offspring, fitness_scores):
+    # Convert fitness_scores to a NumPy array
+    fitness_scores = np.array(fitness_scores)
+    # Sort the fitness_scores array and retrieve the indices of the sorted elements
+    sorted_indices = np.argsort(fitness_scores)
+    # Get the indices of the 3*REPLACEMENT_SIZE worst elements
+    worst_indices_arr = sorted_indices[:3 * REPLACEMENT_IN_BLOCK]
 
-    # Find indices of individuals with best fitness scores from the existing population
-    best_population_indices = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i], reverse=True)[
-                              :REPLACEMENT_SIZE]
+    # Convert fitness_scores to a NumPy array
+    fitness_scores = np.array(fitness_scores)
+    # Find the indices of the individuals with the best fitness scores
+    best_population_indices = np.argpartition(-fitness_scores, REPLACEMENT_IN_BLOCK)[:REPLACEMENT_IN_BLOCK]
 
-    # Find indices of individuals with best fitness scores from the offspring
-    best_offspring_indices = sorted(range(len(offspring)), key=lambda i: fitness(offspring[i]),
-                                    reverse=True)[:REPLACEMENT_SIZE]
+    # Convert offspring to a NumPy array
+    offspring = np.array(offspring)
+
+    # Calculate the fitness scores of the offspring
+    fitness_scores = np.array([fitness(o) for o in offspring])
+
+    # Find the indices of the best offspring based on fitness scores
+    best_offspring_indices = np.argpartition(-fitness_scores, REPLACEMENT_IN_BLOCK)[:REPLACEMENT_IN_BLOCK]
 
     # replacing 3*REPLACEMENT_SIZE worst individuals with the best individuals from the population, offspring and
     # the best individuals from the offspring. keeping REPLACEMT_SIZE times best individual.
     # saves REPLACEMENT_SIZE top indices from population, and REPLACEMENT_SIZE top indices from offspring
-    for i in range(REPLACEMENT_SIZE):
-        population[worst_indices[i]] = population[best_population_indices[0]]
-        population[worst_indices[i + REPLACEMENT_SIZE]] = population[best_population_indices[i]]
-        population[worst_indices[i + 2 * REPLACEMENT_SIZE]] = offspring[best_offspring_indices[i]]
+    for i in range(REPLACEMENT_IN_BLOCK):
+        population[worst_indices_arr[i]] = population[best_population_indices[0]]
+        population[worst_indices_arr[i + REPLACEMENT_IN_BLOCK]] = population[best_population_indices[i]]
+        population[worst_indices_arr[i + 2 * REPLACEMENT_IN_BLOCK]] = offspring[best_offspring_indices[i]]
 
     return population
 
@@ -223,10 +236,8 @@ def genetic_algorithm():
                     offspring = mutate(offspring)
                 next_generation.append(offspring)
 
-            # Replace population with next generation
-            ######decide which one of the two methods we prefer -----------------------------
-            population = replace_population(population, next_generation, fitness_scores)
-            #population = next_generation
+        #next generation is ready, replace the old population with the new one
+        population = modify_population(population, next_generation, fitness_scores)
 
         fitness_scores = [fitness(decryption_key) for decryption_key in population]
         if DO_DARWIN:
@@ -257,7 +268,7 @@ def genetic_algorithm():
 
 
 best_decryption_key = genetic_algorithm()
-decrypted_text = decrypt_text(best_decryption_key)
+decrypted_text = decrypt(best_decryption_key)
 # Save decrypted text to file
 with open("plain.txt", "w") as plain_file:
     plain_file.write(decrypted_text)
