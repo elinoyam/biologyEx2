@@ -1,138 +1,267 @@
 import random
-import json
+from collections import Counter,defaultdict
 
-GENE_RANGE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-NUM_TOP_PARENTS = 5
-NUM_CHILDREN = 2
-ENCRYPTED_FILE = 'encrypted.txt'
+# Global variables
+POPULATION_SIZE = 100
+MAX_GENERATIONS = 150
+MUTATION_RATE = 1
+REPLACEMENT_RATE = 0.15
+REPLACEMENT_SIZE = int(POPULATION_SIZE * REPLACEMENT_RATE)
+EPSILON = 0.001
+NO_IMPROVEMENT_THRESHOLD = 15
+ELITE_SELECTION = 0.2
+LOCAL_SWAPS = 5
+DARWIN = False
+LAMARCK = False
+FITNESS_COUNTER = 0
+
+with open("dict.txt", "r") as dict_file:
+    dictionary = set(word.strip() for word in dict_file)
+
+with open("Letter_Freq.txt", "r") as freq_file:
+    letter_frequencies = {}
+    letter_frequencies_lines = freq_file.read().splitlines()
+    for line in letter_frequencies_lines:
+        if line.strip() != "":
+            freq, letter = line.strip().split()
+            letter_frequencies[letter.lower()] = float(freq)
+
+with open("Letter2_Freq.txt", "r") as freq2_file:
+    letter2_frequencies = {}
+    letter_frequencies_lines = freq2_file.read().splitlines()
+    for line in letter_frequencies_lines:
+        if line.strip() != "":
+            freq, letter = line.split("\t")
+            if freq != '':
+                letter2_frequencies[letter.lower()] = float(freq)
+
+with open("enc.txt", "r") as enc_file:
+    encoded_text = enc_file.read().strip()
 
 
-def load_dictionary(file):
-    """Load dictionary file."""
-    with open(file) as f:
-        words = set(f.read().split())
-    return words
+def letters_freq_in_text(text):
+    freq_map = Counter(text)
+    text_len = len(text)
+    freq_map = {letter: count / text_len for letter, count in freq_map.items()}
+    return freq_map
+
+def letters2_freq_in_text(text):
+    freq_map = defaultdict(int)
+    text_len = len(text)
+    for i in range(len(text) - 1):
+        letter_pair = text[i:i + 2]
+        freq_map[letter_pair] += 1
+
+    for letter_pair in freq_map:
+        freq_map[letter_pair] /= text_len
+
+    return freq_map
+
+def fitness(decryption_key):
+    global FITNESS_COUNTER
+    FITNESS_COUNTER += 1
+    decrypted_text = decrypt_text(decryption_key)
+    decrypted_text_set = set(decrypted_text.split(" "))
+
+    letter_freq = letters_freq_in_text(decrypted_text)
+    letter_pair_freq = letters2_freq_in_text(decrypted_text)
+    letters_matching = 0
+
+    words_matching = len(decrypted_text_set.intersection(dictionary))
+
+    for letter in letter_frequencies:
+        if letter in letter_freq and letter in letter_frequencies:
+            letters_matching += (1 - abs(letter_freq[letter] - letter_frequencies[letter])) ** 2
+
+    for letter_pair in letter2_frequencies:
+        if letter_pair in letter_pair_freq and letter_pair in letter2_frequencies:
+            letters_matching += (1 - abs(letter_pair_freq[letter_pair] - letter2_frequencies[letter_pair])) ** 2
+
+    return words_matching + letters_matching
 
 
-def load_letter_freq(file):
-    """Load letter frequency file."""
-    with open(file) as f:
-        letter_prob = {}
-        for line in f:
-            prob, letter = line.strip().split()
-            letter_prob[letter] = float(prob)
-    return letter_prob
+def decrypt_text(decryption_key):
+    decrypted_text = ""
+    for letter in encoded_text:
+        if letter in decryption_key:
+            decrypted_text += decryption_key[letter]
+        else:
+            decrypted_text += letter
+    return decrypted_text
 
 
-def generate_initial_population(population_size, key_length):
-    """Generate an initial population of decryption keys."""
+def generate_population():
+    LETTERS = "abcdefghijklmnopqrstuvwxyz"
     population = []
-    for i in range(population_size):
-        key = list(GENE_RANGE)
-        random.shuffle(key)
-        population.append(''.join(key))
+    for _ in range(POPULATION_SIZE):
+        decryption_key = list(LETTERS)
+        random.shuffle(decryption_key)
+        population.append({letter: decrypted for letter, decrypted in zip(LETTERS, decryption_key)})
     return population
 
 
-def select_parents(population, encrypted_text, dictionary_file, letter_freq_file):
-    """Select two parents from the population using fitness-proportionate selection."""
-    fitnesses = [fitness(key, encrypted_text, dictionary_file, letter_freq_file) for key in population]
-    total_fitness = sum(fitnesses)
-    parent1 = random.choices(population, weights=[f/total_fitness for f in fitnesses])[0]
-    parent2 = random.choices(population, weights=[f/total_fitness for f in fitnesses])[0]
-    return parent1, parent2
-
-
 def crossover(parent1, parent2):
-    """Perform crossover to produce two children."""
-    crossover_point = random.randint(1, len(parent1)-1)
-    child1 = parent1[:crossover_point] + parent2[crossover_point:]
-    child2 = parent2[:crossover_point] + parent1[crossover_point:]
-    return child1, child2
+    # create a child from crossing over the parents at a random point in the decryption key dictionary
+    # while making sure that the child's decryption key is valid (i.e. no duplicate values)
+    LETTERS = "abcdefghijklmnopqrstuvwxyz"
+    child = {}
+    crossover_point = random.randint(0, len(LETTERS) - 1)
+    for i in range(crossover_point):
+        child[LETTERS[i]] = parent1[LETTERS[i]]
+    for i in range(crossover_point, len(LETTERS)):
+        child[LETTERS[i]] = parent2[LETTERS[i]]
+
+    # check if the child's decryption key is valid
+    # if not, swap one of the child's duplicate values with a letter that doesn't exist in the child's decryption key
+    letters_in_child = set()
+    letters_to_check = [char for char in LETTERS]
+    for key, letter in child.items():
+        if letter not in letters_in_child:
+            letters_in_child.add(letter)
+            letters_to_check.remove(letter)
+        else:  # letter that was already in the child's decryption key - swap it with a letter that wasn't seen yet
+            child[key] = random.choice(letters_to_check)
+            letters_in_child.add(child[key])
+            letters_to_check.remove(child[key])
+
+    return child
+
+def mutate(decryption_key):
+    # swap two random letters in the decryption key
+    LETTERS = "abcdefghijklmnopqrstuvwxyz"
+    letter1 = random.choice(LETTERS)
+    letter2 = random.choice(LETTERS)
+    decryption_key[letter1], decryption_key[letter2] = decryption_key[letter2], decryption_key[letter1]
+    return decryption_key
 
 
-def mutate(key, mutation_rate):
-    """Mutate the decryption key."""
-    if random.random() < mutation_rate:
-        index1, index2 = random.sample(range(len(key)), 2)
-        key[index1], key[index2] = key[index2], key[index1]
-    return ''.join(key)
+
+def select_parents(population, fitness_scores,tournament_size = 5):
+    parents = []
+    for i in range(2):
+        #select random individuals from the population to compete in the tournament
+        tournament = random.sample(range(len(population)), tournament_size)
+        #select the individual with the highest fitness score from the tournament to be a parent
+        winner = tournament[0]
+        for j in tournament:
+            if fitness_scores[j] > fitness_scores[winner]:
+                winner = j
+        parents.append(population[winner])
+    return parents
 
 
-def fitness(key, encrypted_text, dictionary_file, letter_freq_file):
-    """Calculate the fitness of a decryption key."""
-    # Load dictionary and letter frequency
-    dictionary = load_dictionary(dictionary_file)
-    letter_freq = load_letter_freq(letter_freq_file)
+def replace_population(population, offspring, fitness_scores):
+    worst_indices = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i])[:3 * REPLACEMENT_SIZE]
 
-    # Decrypt the text
-    decrypted_text = encrypted_text.translate(str.maketrans(key, GENE_RANGE))
+    # Find indices of individuals with best fitness scores from the existing population
+    best_population_indices = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i], reverse=True)[
+                              :REPLACEMENT_SIZE]
 
-    # Calculate the fitness
-    num_valid_words = sum(1 for word in decrypted_text.split() if word in dictionary)
-    letter_counts = {letter: 0 for letter in GENE_RANGE}
-    for letter in decrypted_text:
-        if letter in GENE_RANGE:
-            letter_counts[letter] += 1
-    letter_freq_decrypted = {letter: count/len(decrypted_text) for letter, count in letter_counts.items()}
-    fitness_score = num_valid_words + sum(min(letter_freq.get(letter, 0), letter_freq_decrypted.get(letter, 0)) for letter in GENE_RANGE)
-    return fitness_score
+    # Find indices of individuals with best fitness scores from the offspring
+    best_offspring_indices = sorted(range(len(offspring)), key=lambda i: fitness(offspring[i]),
+                                    reverse=True)[:REPLACEMENT_SIZE]
+
+    # replacing 3*REPLACEMENT_SIZE worst individuals with the best individuals from the population, offspring and
+    # the best individuals from the offspring. keeping REPLACEMT_SIZE times best individual.
+    # saves REPLACEMENT_SIZE top indices from population, and REPLACEMENT_SIZE top indices from offspring
+    for i in range(REPLACEMENT_SIZE):
+        population[worst_indices[i]] = population[best_population_indices[0]]
+        population[worst_indices[i + REPLACEMENT_SIZE]] = population[best_population_indices[i]]
+        population[worst_indices[i + 2 * REPLACEMENT_SIZE]] = offspring[best_offspring_indices[i]]
+
+    return population
 
 
-def genetic_algorithm(dictionary_file, letter_freq_file, population_size=100, key_length=26, mutation_rate=0.1,
-                      max_generations=1000):
-    # Load the dictionary file and letter frequency file
-    dictionary = load_dictionary_file(dictionary_file)
-    letter_freq = load_letter_frequency_file(letter_freq_file)
+def local_optimization(individual, n=LOCAL_SWAPS):
+    keys = list(individual.keys())
+    for _ in range(n):
+        index1, index2 = random.sample(range(len(keys)), 2)
+        letter1, letter2 = keys[index1], keys[index2]
+        individual[letter1], individual[letter2] = individual[letter2], individual[letter1]
+    return individual
 
-    # Generate an initial population of decryption keys
-    population = generate_population(population_size, key_length)
 
-    # Evaluate the initial population
-    fitness_scores = evaluate_population(population, letter_freq, dictionary)
+def darwin_mutation(population, fitness_scores):
+    for i in range(len(population)):
+        mutated_individual = mutate(population[i])
+        mutated_fitness = fitness(mutated_individual)
+        if mutated_fitness > fitness_scores[i]:
+            fitness_scores[i] = mutated_fitness
 
-    # Track the best decryption key and its fitness score
-    best_key = population[0]
-    best_fitness = fitness_scores[0]
+def lamarck_mutation(population, fitness_scores):
+    for i in range(len(population)):
+        mutated_individual = mutate(population[i])
+        mutated_fitness = fitness(mutated_individual)
+        if mutated_fitness > fitness_scores[i]:
+            population[i] = mutated_individual
+            fitness_scores[i] = mutated_fitness
 
-    # Start the main loop of the genetic algorithm
-    for generation in range(max_generations):
-        # Select the parents for the next generation
-        parents = select_parents(population, fitness_scores)
 
-        # Generate the offspring for the next generation
-        offspring = generate_offspring(parents, population_size)
+def genetic_algorithm():
+    population = generate_population()
+    no_change = 0
+    best_fitness = 0
+    for generation in range(MAX_GENERATIONS):
+        fitness_scores = [fitness(decryption_key) for decryption_key in population]
+        elite_size = int(POPULATION_SIZE * ELITE_SELECTION)  # Select top ELITE_SELECTION of the population
+        elite = sorted(range(len(fitness_scores)), key=lambda i: fitness_scores[i], reverse=True)[:elite_size]
+        next_generation = [population[i] for i in elite]
+        while len(next_generation) < POPULATION_SIZE:
+            parent1, parent2 = select_parents(population, fitness_scores)
+            offspring = crossover(parent1, parent2)
+            if random.random() < MUTATION_RATE:
+                offspring = mutate(offspring)
+            next_generation.append(offspring)
 
-        # Mutate the offspring
-        offspring = mutate_offspring(offspring, mutation_rate)
+        # Replace population with next generation
+        ######decide which one of the two methods we prefer -----------------------------
+        population = replace_population(population, next_generation, fitness_scores)
+        #population = next_generation
 
-        # Evaluate the offspring
-        offspring_fitness_scores = evaluate_population(offspring, letter_freq, dictionary)
+        if DARWIN:
+            darwin_mutation(population, fitness_scores)
+        if LAMARCK:
+            lamarck_mutation(population, fitness_scores)
 
-        # Select the survivors for the next generation
-        population, fitness_scores = select_survivors(population, fitness_scores, offspring, offspring_fitness_scores)
 
-        # Update the best decryption key and its fitness score
-        if fitness_scores[0] > best_fitness:
-            best_key = population[0]
-            best_fitness = fitness_scores[0]
+        fitness_scores = [fitness(decryption_key) for decryption_key in population]
+        best_individual_index = max(range(len(fitness_scores)), key=lambda i: fitness_scores[i])
 
-        # Print the progress every 10 generations
-        if generation % 10 == 0:
-            print(f"Generation {generation}: Best Fitness = {best_fitness:.2f}")
 
-    # Return the best decryption key
+        best_key = population[best_individual_index]
+        prev_best_fitness = best_fitness
+        best_fitness = fitness_scores[best_individual_index]
+        print(f'generation {generation}: best fitness = {best_fitness}')
+
+        if best_fitness - prev_best_fitness < EPSILON:
+            no_change += 1
+        else:
+            no_change = 0
+
+        if no_change == NO_IMPROVEMENT_THRESHOLD:
+            break
+
     return best_key
 
 
-def decrypt_file(decryption_key):
-    encrypted_text = load_encrypted_file(ENCRYPTED_FILE)
-    decrypted_text = encrypted_text.translate(str.maketrans(decryption_key, GENE_RANGE))
-    print(decrypted_text)
+best_decryption_key = genetic_algorithm()
+decrypted_text = decrypt_text(best_decryption_key)
+# Save decrypted text to file
+with open("plain.txt", "w") as plain_file:
+    plain_file.write(decrypted_text)
+with open("perm.txt", "w") as perm_file:
+    for letter, decrypted_letter in best_decryption_key.items():
+        perm_file.write(f"{letter}\t{decrypted_letter}\n")
 
+expected_decryption_key = {'a': 'y', 'b': 'x', 'c': 'i', 'd': 'n', 'e': 't', 'f': 'o', 'g': 'z', 'h': 'j', 'i': 'c',
+                           'j': 'e',
+                           'k': 'b', 'l': 'l', 'm': 'd', 'n': 'u', 'o': 'k', 'p': 'm', 'q': 's', 'r': 'v', 's': 'p',
+                           't': 'q',
+                           'u': 'r', 'v': 'h', 'w': 'w', 'x': 'g', 'y': 'a', 'z': 'f'}
+total_keys = len(expected_decryption_key)
 
-# Run the genetic algorithm and decrypt the file
-dictionary_file = 'dict.txt'
-letter_freq_file = 'Letter_freq.txt'
-best_decryption_key = genetic_algorithm(dictionary_file, letter_freq_file)
-decrypt_file(best_decryption_key)
+correct = sum(1 for letter in expected_decryption_key if expected_decryption_key[letter] == best_decryption_key[letter])
+print(f"amount of correct keys: {correct} / {total_keys}")
+print(f"correctness percentage: {correct / total_keys * 100}%")
+print(f"number of calls to fitness function is: {FITNESS_COUNTER}")
+
