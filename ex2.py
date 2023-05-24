@@ -2,13 +2,15 @@ import math
 import random
 import numpy as np
 from collections import Counter,defaultdict
+import matplotlib.pyplot as plt
+
 
 POPULATION_SIZE = 100
 MAX_GENERATIONS = 150
-MUTATION_RATE = 1
+MUTATION_RATE = 0.8
 REPLACEMENT_IN_BLOCK = math.floor(POPULATION_SIZE * 0.15)
 EPSILON = 0.001
-NO_IMPROVEMENT_THRESHOLD = 15
+NO_IMPROVEMENT_THRESHOLD = 10
 ELITE_SELECTION = 0.2
 OPTIMIZATION_SWAPS_COUNT = 1
 DO_DARWIN = True # set to True to use Darwin's optimization
@@ -16,6 +18,7 @@ DO_LAMARCK = False # set to True to use Lamarck's optimization
 FITNESS_COUNTER = 0
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
 LETTERS_COUNT = 26
+FITNESS_THRESHOLD = 0.95
 
 with open("dict.txt", "r") as dict_file:
     dictionary = set(word.strip() for word in dict_file)
@@ -38,6 +41,7 @@ with open("Letter2_Freq.txt", "r") as freq2_file:
                 letter2_frequencies[letter.lower()] = float(freq)
 
 with open("enc.txt", "r") as enc_file:
+# with open("test1enc.txt", "r") as enc_file:
     encoded_text = enc_file.read().strip()
 
 
@@ -269,7 +273,7 @@ def genetic_algorithm():
         best_solution_fitness = max(fitness_scores)
         best_solution_index = fitness_scores.index(best_solution_fitness)
         best_solution = population[best_solution_index]
-
+        average_fitness = sum(fitness_scores) / len(fitness_scores)
         # if the best solution didn't change for 10 generations, stop
         print(f'generation {generation}: best fitness = {best_solution_fitness}')
 
@@ -282,12 +286,33 @@ def genetic_algorithm():
             break
 
         prev_best_fitness = best_solution_fitness # save the best fitness score for the next generation
+        plt.scatter(generation, best_solution_fitness, color='blue')
+        plt.scatter(generation, average_fitness, color='green')
 
-    return best_solution
 
+    return best_solution, best_solution_fitness
 
-best_decryption_key = genetic_algorithm()
+response = input("please select the algorithm to run: \n 1. Regular Genetic Algorithm \n 2. Darwin's Genetic Algorithm \n 3. Lamarck's Genetic Algorithm \n")
+if response == '1':
+    DO_DARWIN = DO_LAMARCK = False
+elif response == '2':
+    DO_DARWIN = True
+    DO_LAMARCK = False
+elif response == '3':
+    DO_DARWIN = False
+    DO_LAMARCK = True
+else:
+    print("invalid input")
+    exit()
+
+best_dk_fitness = 0
+# while best_dk_fitness < FITNESS_THRESHOLD:
+best_decryption_key, best_dk_fitness = genetic_algorithm()
 decrypted_text = decrypt(best_decryption_key)
+
+plt.ylabel('Fitness score')
+plt.xlabel('Generation number')
+plt.show()
 # Save decrypted text to file
 with open("plain.txt", "w") as plain_file:
     plain_file.write(decrypted_text)
