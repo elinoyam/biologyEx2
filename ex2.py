@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 
 POPULATION_SIZE = 100
 MAX_GENERATIONS = 150
-MUTATION_RATE = 0.8
+MUTATION_RATE = 1
 REPLACEMENT_IN_BLOCK = math.floor(POPULATION_SIZE * 0.15)
 EPSILON = 0.001
 NO_IMPROVEMENT_THRESHOLD = 10
 ELITE_SELECTION = 0.2
 OPTIMIZATION_SWAPS_COUNT = 1
-DO_DARWIN = True # set to True to use Darwin's optimization
+DO_DARWIN = False # set to True to use Darwin's optimization
 DO_LAMARCK = False # set to True to use Lamarck's optimization
 FITNESS_COUNTER = 0
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
@@ -41,7 +41,6 @@ with open("Letter2_Freq.txt", "r") as freq2_file:
                 letter2_frequencies[letter.lower()] = float(freq)
 
 with open("enc.txt", "r") as enc_file:
-# with open("test1enc.txt", "r") as enc_file:
     encoded_text = enc_file.read().strip()
 
 
@@ -292,7 +291,7 @@ def genetic_algorithm():
 
     return best_solution, best_solution_fitness
 
-response = input("please select the algorithm to run: \n 1. Regular Genetic Algorithm \n 2. Darwin's Genetic Algorithm \n 3. Lamarck's Genetic Algorithm \n")
+response = input("Please select the algorithm to run: \n 1. Regular Genetic Algorithm \n 2. Darwin's Genetic Algorithm \n 3. Lamarck's Genetic Algorithm \n")
 if response == '1':
     DO_DARWIN = DO_LAMARCK = False
 elif response == '2':
@@ -306,8 +305,17 @@ else:
     exit()
 
 best_dk_fitness = 0
-# while best_dk_fitness < FITNESS_THRESHOLD:
-best_decryption_key, best_dk_fitness = genetic_algorithm()
+best_decryption_key = None
+number_of_runs = 0
+
+
+while best_dk_fitness < FITNESS_THRESHOLD and number_of_runs < 5:
+    current_dk_fitness_decryption_key, current_dk_fitness = genetic_algorithm()
+    number_of_runs += 1
+    if current_dk_fitness > best_dk_fitness:
+        best_dk_fitness = current_dk_fitness
+        best_decryption_key = current_dk_fitness_decryption_key
+
 decrypted_text = decrypt(best_decryption_key)
 
 plt.ylabel('Fitness score')
@@ -320,15 +328,5 @@ with open("perm.txt", "w") as perm_file:
     for letter, decrypted_letter in best_decryption_key.items():
         perm_file.write(f"{letter}\t{decrypted_letter}\n")
 
-expected_decryption_key = {'a': 'y', 'b': 'x', 'c': 'i', 'd': 'n', 'e': 't', 'f': 'o', 'g': 'z', 'h': 'j', 'i': 'c',
-                           'j': 'e',
-                           'k': 'b', 'l': 'l', 'm': 'd', 'n': 'u', 'o': 'k', 'p': 'm', 'q': 's', 'r': 'v', 's': 'p',
-                           't': 'q',
-                           'u': 'r', 'v': 'h', 'w': 'w', 'x': 'g', 'y': 'a', 'z': 'f'}
-total_keys = len(expected_decryption_key)
-
-correct = sum(1 for letter in expected_decryption_key if expected_decryption_key[letter] == best_decryption_key[letter])
-print(f"amount of correct keys: {correct} / {total_keys}")
-print(f"correctness percentage: {correct / total_keys * 100}%")
-print(f"number of calls to fitness function is: {FITNESS_COUNTER}")
+print(f"Number of calls to fitness function is: {FITNESS_COUNTER}")
 
