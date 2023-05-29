@@ -1,0 +1,1 @@
+pyinstaller --onefile --distpath . --hidden-import=numpy --hidden-import=matplotlib --hidden-import=math --hidden-import=collections ex2.py
